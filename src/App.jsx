@@ -1,5 +1,8 @@
-
 import { useState, useEffect, useRef } from "react";
+import { db } from "./firebase";
+import {
+  collection, doc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot
+} from "firebase/firestore";
 import {
   Clock, MapPin, Coffee, LogIn, LogOut, Users, Download, Plus, X,
   AlertCircle, CheckCircle2, History, UserPlus, Calendar, ChevronLeft,
@@ -7,14 +10,24 @@ import {
   Briefcase, Truck, Package, Tractor, RefreshCw, Mail, Egg, BarChart2
 } from "lucide-react";
 
-// ─── Simple localStorage helpers ─────────────────────────────────────────────
-const LS = {
-  get: (key, def) => {
-    try { const v = localStorage.getItem("ff_" + key); return v ? JSON.parse(v) : def; } catch { return def; }
-  },
-  set: (key, val) => {
-    try { localStorage.setItem("ff_" + key, JSON.stringify(val)); } catch {}
-  },
+// ─── Firestore helpers ───────────────────────────────────────────────────────
+// Each data type is a Firestore collection. Documents are keyed by id.
+const fsGet = async (col, def) => {
+  try {
+    const snap = await getDocs(collection(db, col));
+    if (snap.empty) return def;
+    return snap.docs.map(d => ({ ...d.data(), id: d.id }));
+  } catch (e) { console.error("fsGet", col, e); return def; }
+};
+const fsSet = async (col, id, data) => {
+  try {
+    await setDoc(doc(db, col, id), data);
+  } catch (e) { console.error("fsSet", col, e); }
+};
+const fsDel = async (col, id) => {
+  try {
+    await deleteDoc(doc(db, col, id));
+  } catch (e) { console.error("fsDel", col, e); }
 };
 
 // ─── NSW Public Holidays 2025-2026 ────────────────────────────────────────────
@@ -95,11 +108,12 @@ const firstDOW    = (y, m) => new Date(y, m, 1).getDay();
 // ═════════════════════════════════════════════════════════════════════════════
 export default function App() {
   // ── State ──────────────────────────────────────────────────────────────────
-  const [staff,     setStaff    ] = useState(() => LS.get("staff",   []));
-  const [entries,   setEntries  ] = useState(() => LS.get("entries", []));
-  const [roster,    setRoster   ] = useState(() => LS.get("roster",  []));
-  const [leaves,    setLeaves   ] = useState(() => LS.get("leaves",  []));
-  const [farmLoc,   setFarmLoc  ] = useState(() => LS.get("loc",     null));
+  const [staff,     setStaff    ] = useState([]);
+  const [entries,   setEntries  ] = useState([]);
+  const [roster,    setRoster   ] = useState([]);
+  const [leaves,    setLeaves   ] = useState([]);
+  const [farmLoc,   setFarmLoc  ] = useState(null);
+  const [dbLoading, setDbLoading] = useState(true);
   const [view,      setView     ] = useState("clock");
   const [now,       setNow      ] = useState(sydNow());
   const [toast,     setToast    ] = useState(null);
@@ -146,17 +160,65 @@ export default function App() {
   const [rptFrom,  setRptFrom ] = useState("");
   const [rptTo,    setRptTo   ] = useState("");
 
-  // ── Persist helpers ────────────────────────────────────────────────────────
-  const saveStaff   = (v) => { setStaff(v);   LS.set("staff",   v); };
-  const saveEntries = (v) => { setEntries(v); LS.set("entries", v); };
-  const saveRoster  = (v) => { setRoster(v);  LS.set("roster",  v); };
-  const saveLeaves  = (v) => { setLeaves(v);  LS.set("leaves",  v); };
-  const saveLoc     = (v) => { setFarmLoc(v); LS.set("loc",     v); };
+  // ── Persist helpers (Firestore) ────────────────────────────────────────────
+  const saveStaff = async (items) => {
+    setStaff(items);
+    for (const item of items) await fsSet("staff", item.id, item);
+  };
+  const addEntry = async (entry) => {
+    setEntries(prev => [entry, ...prev]);
+    await fsSet("entries", entry.id, entry);
+  };
+  const updateEntry = async (updated) => {
+    setEntries(prev => prev.map(e => e.id === updated.id ? updated : e));
+    await fsSet("entries", updated.id, updated);
+  };
+  const saveEntries = async (items) => {
+    setEntries(items);
+    for (const item of items) await fsSet("entries", item.id, item);
+  };
+  const saveRoster = async (items) => {
+    setRoster(items);
+    for (const item of items) await fsSet("roster", item.id, item);
+  };
+  const saveLeaves = async (items) => {
+    setLeaves(items);
+    for (const item of items) await fsSet("leaves", item.id, item);
+  };
+  const saveLoc = async (v) => {
+    setFarmLoc(v);
+    if (v) await fsSet("settings", "location", { lat: v.lat, lng: v.lng });
+    else await fsDel("settings", "location");
+  };
 
   // ── Live clock ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const t = setInterval(() => setNow(sydNow()), 1000);
     return () => clearInterval(t);
+  }, []);
+
+  // ── Load all data from Firestore on mount ──────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const [s, e, r, l, loc] = await Promise.all([
+          fsGet("staff",    []),
+          fsGet("entries",  []),
+          fsGet("roster",   []),
+          fsGet("leaves",   []),
+          fsGet("settings", []),
+        ]);
+        setStaff(s);
+        setEntries(e);
+        setRoster(r);
+        setLeaves(l);
+        const locDoc = loc.find(x => x.id === "location");
+        if (locDoc) setFarmLoc({ lat: locDoc.lat, lng: locDoc.lng });
+      } catch (err) {
+        console.error("Failed to load from Firestore", err);
+      }
+      setDbLoading(false);
+    })();
   }, []);
 
   // ── Missed clock-in check (every minute) ──────────────────────────────────
@@ -250,7 +312,7 @@ export default function App() {
       breaks:   [],
       note:     "",
     };
-    saveEntries([entry, ...entries]);
+    await saveEntries([entry, ...entries]);
     showToast(selStaff.name + " clocked in – " + (DEPTS.find(d => d.id === deptId)?.label || ""));
     cancelPin();
   };
@@ -260,7 +322,7 @@ export default function App() {
     if (!(await checkGPS())) return;
     const breaks  = selActive.breaks.map(b => b.end ? b : { ...b, end: new Date().toISOString() });
     const updated = { ...selActive, breaks, clockOut: new Date().toISOString() };
-    saveEntries(entries.map(e => e.id === selActive.id ? updated : e));
+    await saveEntries(entries.map(e => e.id === selActive.id ? updated : e));
     showToast(selStaff.name + " clocked out – " + fmtDur(workedMs(updated)));
     cancelPin();
   };
@@ -271,38 +333,38 @@ export default function App() {
     const breaks = ob
       ? selActive.breaks.map(b => b === ob ? { ...b, end: new Date().toISOString() } : b)
       : [...selActive.breaks, { type, start: new Date().toISOString(), end: null }];
-    saveEntries(entries.map(e => e.id === selActive.id ? { ...selActive, breaks } : e));
+    await saveEntries(entries.map(e => e.id === selActive.id ? { ...selActive, breaks } : e));
     showToast(ob ? "Break ended" : type === "meal" ? "Meal break started" : "Rest break started");
     cancelPin();
   };
 
   // ── Add staff ──────────────────────────────────────────────────────────────
-  const doAddStaff = () => {
+  const doAddStaff = async () => {
     if (!fsName.trim())          { showToast("Please enter a name", "err");            return; }
     if (!/^\d{4}$/.test(fsPin))  { showToast("PIN must be exactly 4 digits", "err");  return; }
     if (staff.some(s => s.pin === fsPin)) { showToast("That PIN is already taken", "err"); return; }
     const s = { id: "s_" + Date.now(), name: fsName.trim(), pin: fsPin, role: fsRole };
-    saveStaff([...staff, s]);
+    await saveStaff([...staff, s]);
     setFsName(""); setFsPin(""); setFsRole("staff");
     setShowAddStaff(false);
     showToast(s.name + " added to the crew");
   };
 
   // ── Add roster shift ───────────────────────────────────────────────────────
-  const doAddShift = () => {
+  const doAddShift = async () => {
     if (!frStaff || !frDate || !frStart) { showToast("Fill in all required fields", "err"); return; }
-    saveRoster([...roster, { id: "r_" + Date.now(), staffId: frStaff, date: frDate, startTime: frStart, endTime: frEnd }]);
+    await saveRoster([...roster, { id: "r_" + Date.now(), staffId: frStaff, date: frDate, startTime: frStart, endTime: frEnd }]);
     setFrStaff(""); setFrDate(""); setFrStart(""); setFrEnd("");
     setShowAddRoster(false);
     showToast("Shift added");
   };
 
   // ── Submit leave ───────────────────────────────────────────────────────────
-  const doSubmitLeave = () => {
+  const doSubmitLeave = async () => {
     if (!flStaff || !flFrom || !flTo) { showToast("Fill in all required fields", "err"); return; }
     const sName = staff.find(s => s.id === flStaff)?.name || "";
     const req = { id: "l_" + Date.now(), staffId: flStaff, staffName: sName, from: flFrom, to: flTo, type: flType, note: flNote, status: "pending", submitted: new Date().toISOString() };
-    saveLeaves([...leaves, req]);
+    await saveLeaves([...leaves, req]);
     mailto(MANAGER, "Leave Request – " + sName,
       "Hi Hannah,\n\n" + sName + " has submitted a " + flType + " leave request.\n\nFrom: " + flFrom + "\nTo:   " + flTo + "\nNote: " + (flNote || "—") + "\n\nPlease review in the Time Ledger app.\n\nThanks");
     setFlStaff(""); setFlFrom(""); setFlTo(""); setFlType("annual"); setFlNote("");
@@ -317,8 +379,8 @@ export default function App() {
     const toLocal = iso => { if (!iso) return ""; const d = new Date(iso); return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes()); };
     setEeIn(toLocal(e.clockIn)); setEeOut(toLocal(e.clockOut)); setEeNote(e.note || "");
   };
-  const doSaveEdit = () => {
-    saveEntries(entries.map(e => e.id === editingEntry.id
+  const doSaveEdit = async () => {
+    await saveEntries(entries.map(e => e.id === editingEntry.id
       ? { ...e, clockIn: new Date(eeIn).toISOString(), clockOut: eeOut ? new Date(eeOut).toISOString() : null, note: eeNote }
       : e));
     setEditingEntry(null);
@@ -929,7 +991,7 @@ export default function App() {
                           <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{r.date}</td>
                           <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{r.startTime}</td>
                           <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{r.endTime || "—"}</td>
-                          <td><button className="btn btn-g btn-sm" style={{ color: "var(--red)" }} onClick={() => { saveRoster(roster.filter(x => x.id !== r.id)); showToast("Shift removed"); }}><X size={12} /></button></td>
+                          <td><button className="btn btn-g btn-sm" style={{ color: "var(--red)" }} onClick={() => { const next = roster.filter(x => x.id !== r.id); setRoster(next); fsDel("roster", r.id); showToast("Shift removed"); }}><X size={12} /></button></td>
                         </tr>
                       );
                     })}
@@ -1007,8 +1069,8 @@ export default function App() {
                         <td>
                           {l.status === "pending" && (
                             <div className="row gap4">
-                              <button className="btn btn-p btn-sm" onClick={() => { saveLeaves(leaves.map(x => x.id === l.id ? { ...x, status: "approved" } : x)); showToast("Approved"); }}><Check size={11} /> Approve</button>
-                              <button className="btn btn-o btn-sm" style={{ color: "var(--red)", borderColor: "var(--red)" }} onClick={() => { saveLeaves(leaves.map(x => x.id === l.id ? { ...x, status: "declined" } : x)); showToast("Declined"); }}><X size={11} /> Decline</button>
+                              <button className="btn btn-p btn-sm" onClick={() => { const updated = { ...l, status: "approved" }; setLeaves(leaves.map(x => x.id === l.id ? updated : x)); fsSet("leaves", l.id, updated); showToast("Approved"); }}><Check size={11} /> Approve</button>
+                              <button className="btn btn-o btn-sm" style={{ color: "var(--red)", borderColor: "var(--red)" }} onClick={() => { const updated = { ...l, status: "declined" }; setLeaves(leaves.map(x => x.id === l.id ? updated : x)); fsSet("leaves", l.id, updated); showToast("Declined"); }}><X size={11} /> Decline</button>
                             </div>
                           )}
                         </td>
@@ -1257,7 +1319,7 @@ export default function App() {
                     <div className="card-b">
                       <div className="row between" style={{ marginBottom: 8 }}>
                         <div style={{ fontFamily: "var(--serif)", fontSize: 18 }}>{s.name}</div>
-                        <button className="btn btn-g btn-sm" style={{ color: "var(--red)" }} onClick={() => { saveStaff(staff.filter(x => x.id !== s.id)); showToast(s.name + " removed"); }}><X size={14} /></button>
+                        <button className="btn btn-g btn-sm" style={{ color: "var(--red)" }} onClick={() => { const next = staff.filter(x => x.id !== s.id); setStaff(next); fsDel("staff", s.id); showToast(s.name + " removed"); }}><X size={14} /></button>
                       </div>
                       <div style={{ fontSize: 11, color: "var(--ink2)", fontFamily: "var(--mono)", marginBottom: 10 }}>
                         PIN ··· {s.pin.slice(-1)} · {s.role === "manager" ? "Manager" : "Staff"}
