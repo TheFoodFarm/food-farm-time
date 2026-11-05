@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCB0dGtg5lSkc6__3QcSNI0mSbkNvn1HCE",
@@ -12,3 +13,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const auth = getAuth(app);
+
+// A second, separate Firebase app instance. It is only used by the admin to
+// create new staff logins without signing the admin out of their own session.
+const secondaryApp = initializeApp(firebaseConfig, "secondary");
+export const secondaryAuth = getAuth(secondaryApp);
