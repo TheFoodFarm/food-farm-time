@@ -25,6 +25,14 @@ const NFC_PARAM = (function () {
   try { return new URLSearchParams(window.location.search).get("nfc"); } catch (e) { return null; }
 })();
 
+const REMEMBER_KEY = "ff_last_login";
+const readRemembered = () => {
+  try { const v = JSON.parse(window.localStorage.getItem(REMEMBER_KEY) || "null"); return v && v.email ? v : null; } catch (e) { return null; }
+};
+const writeRemembered = (v) => {
+  try { if (v) window.localStorage.setItem(REMEMBER_KEY, JSON.stringify(v)); else window.localStorage.removeItem(REMEMBER_KEY); } catch (e) { /* ignore */ }
+};
+
 const HOLIDAYS = {
   "2025-01-01": "New Year's Day", "2025-01-27": "Australia Day (obs.)",
   "2025-04-18": "Good Friday", "2025-04-19": "Easter Saturday", "2025-04-20": "Easter Sunday", "2025-04-21": "Easter Monday",
@@ -400,7 +408,8 @@ export default function App() {
   const [authUser, setAuthUser] = useState(undefined);
   const [profile, setProfile] = useState(null);
   const [profileState, setProfileState] = useState("loading");
-  const [lgEmail, setLgEmail] = useState("");
+  const [remembered, setRemembered] = useState(() => readRemembered());
+  const [lgEmail, setLgEmail] = useState(() => { const r = readRemembered(); return r ? r.email : ""; });
   const [lgPass, setLgPass] = useState("");
   const [lgErr, setLgErr] = useState("");
   const [lgInfo, setLgInfo] = useState("");
@@ -531,6 +540,15 @@ export default function App() {
   // ── default landing page per role ─────────────────────────────────────────
   useEffect(() => {
     if (profile) setView(profile.role === "admin" ? "live" : "clock");
+  }, [profile && profile.id]);
+
+  // ── remember who used this phone, so next time only the password is needed ─
+  useEffect(() => {
+    if (profile && profile.email) {
+      const r = { email: profile.email, name: profile.name };
+      writeRemembered(r);
+      setRemembered(r);
+    }
   }, [profile && profile.id]);
 
   // ── live data subscriptions ───────────────────────────────────────────────
@@ -760,6 +778,10 @@ export default function App() {
     setLgErr(""); setLgInfo("");
     try { await sendPasswordResetEmail(auth, lgEmail.trim()); setLgInfo("If that email has an account, a reset link is on its way."); }
     catch (e) { setLgErr(authMessage(e)); }
+  };
+  const forgetUser = () => {
+    writeRemembered(null); setRemembered(null);
+    setLgEmail(""); setLgPass(""); setLgErr(""); setLgInfo("");
   };
   const doSignOut = async () => { try { await signOut(auth); } catch (e) { console.error(e); } };
 
@@ -1592,10 +1614,19 @@ export default function App() {
           <div className="login-body">
             {lgErr ? <div className="msg-err">{lgErr}</div> : null}
             {lgInfo ? <div className="msg-ok">{lgInfo}</div> : null}
-            <div className="fg"><label className="flbl">Email</label><input className="finp" type="email" autoComplete="username" value={lgEmail} onChange={(e) => setLgEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") doLogin(); }} placeholder="you@example.com" /></div>
-            <div className="fg"><label className="flbl">Password</label><input className="finp" type="password" autoComplete="current-password" value={lgPass} onChange={(e) => setLgPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") doLogin(); }} placeholder="••••••••" /></div>
+            {remembered ? (
+              <div className="mb16">
+                <div style={{ fontSize: 18, fontWeight: 600 }}>Welcome back, {remembered.name}</div>
+                <div className="small muted" style={{ marginTop: 2 }}>{remembered.email}</div>
+                <input type="email" autoComplete="username" value={lgEmail} readOnly tabIndex={-1} aria-hidden="true" style={{ position: "absolute", opacity: 0, height: 0, width: 0, pointerEvents: "none" }} />
+              </div>
+            ) : (
+              <div className="fg"><label className="flbl">Email</label><input className="finp" type="email" autoComplete="username" value={lgEmail} onChange={(e) => setLgEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") doLogin(); }} placeholder="you@example.com" /></div>
+            )}
+            <div className="fg"><label className="flbl">Password</label><input className="finp" type="password" autoComplete="current-password" autoFocus={!!remembered} value={lgPass} onChange={(e) => setLgPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") doLogin(); }} placeholder="••••••••" /></div>
             <button className="btn btn-p btn-lg" disabled={lgBusy} onClick={doLogin}>{lgBusy ? "Signing in…" : "Sign in"}</button>
             <div style={{ textAlign: "center", marginTop: 16 }}><button className="link-btn" onClick={doForgot}>Forgot password?</button></div>
+            {remembered ? <div style={{ textAlign: "center", marginTop: 10 }}><button className="link-btn" style={{ color: "var(--ink2)" }} onClick={forgetUser}>Not {remembered.name}? Use a different account</button></div> : null}
           </div>
         </div>
       </div>
