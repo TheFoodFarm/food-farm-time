@@ -242,7 +242,11 @@ input,select,textarea,button{font-family:inherit;font-size:inherit}
 
 .app{display:flex;min-height:100vh}
 .sidebar{width:232px;flex-shrink:0;background:var(--redd);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
-.sb-logo{padding:24px 20px 18px}
+.sb-logo{padding:22px 20px 18px;display:flex;align-items:center;gap:12px}
+.logo-badge{display:inline-flex;align-items:center;justify-content:center;background:#fff;border-radius:14px;padding:6px;flex-shrink:0}
+.logo-badge img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.login-logo{margin-bottom:16px}
+.tb-logo{display:none}
 .sb-title{font-size:17px;font-weight:700;letter-spacing:-.01em}
 .sb-sub{font-size:12px;color:rgba(255,255,255,.55);margin-top:2px}
 .sb-nav{flex:1;padding:6px 10px}
@@ -392,6 +396,8 @@ select.finp{appearance:auto}
   .g3{grid-template-columns:1fr 1fr}
   .kpi-grid{grid-template-columns:1fr 1fr}
   .topbar{padding:0 16px;height:54px}
+  .tb-logo{display:inline-flex;margin-right:10px}
+  .tb-left{display:flex;align-items:center}
   .tb-t{font-size:16px}
   .stat-label{min-width:100px;font-size:12px}
   th,td{padding:9px 10px}
@@ -399,6 +405,19 @@ select.finp{appearance:auto}
   .login-body{padding:22px}
 }
 `;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// LOGO  (put your logo at  public/logo.png  — nothing shows if the file is missing)
+// ═════════════════════════════════════════════════════════════════════════════
+function Logo({ size }) {
+  const [ok, setOk] = useState(true);
+  if (!ok) return null;
+  return (
+    <span className="logo-badge" style={{ width: size, height: size }}>
+      <img src="/logo.png" alt="The Food Farm" onError={() => setOk(false)} />
+    </span>
+  );
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // APP
@@ -1610,7 +1629,7 @@ export default function App() {
     return shell(
       <div className="login-wrap">
         <div className="login-card">
-          <div className="login-top"><h1>The Food Farm</h1><p>Time Ledger · sign in to clock in, check your hours and request leave</p></div>
+          <div className="login-top"><div className="login-logo"><Logo size={64} /></div><h1>The Food Farm</h1><p>Time Ledger · sign in to clock in, check your hours and request leave</p></div>
           <div className="login-body">
             {lgErr ? <div className="msg-err">{lgErr}</div> : null}
             {lgInfo ? <div className="msg-ok">{lgInfo}</div> : null}
@@ -1638,7 +1657,7 @@ export default function App() {
       : profileState === "missing" ? "Your login works, but your profile hasn't been set up yet. Please ask Hannah to add you in the Team page."
       : "We couldn't load your profile. Check your connection and try again.";
     return shell(
-      <div className="login-wrap"><div className="login-card"><div className="login-top"><h1>The Food Farm</h1></div>
+      <div className="login-wrap"><div className="login-card"><div className="login-top"><div className="login-logo"><Logo size={64} /></div><h1>The Food Farm</h1></div>
         <div className="login-body"><div className="msg-err">{msg}</div><button className="btn btn-o btn-lg" onClick={doSignOut}>Sign out</button></div></div></div>
     );
   }
@@ -1649,7 +1668,7 @@ export default function App() {
   return shell(
     <div className="app">
       <aside className="sidebar">
-        <div className="sb-logo"><div className="sb-title">The Food Farm</div><div className="sb-sub">Time Ledger</div></div>
+        <div className="sb-logo"><Logo size={44} /><div><div className="sb-title">The Food Farm</div><div className="sb-sub">Time Ledger</div></div></div>
         <nav className="sb-nav">
           {NAV.map((g) => (
             <div key={g.sec}>
@@ -1671,7 +1690,7 @@ export default function App() {
 
       <div className="main">
         <div className="topbar">
-          <div className="tb-t">{pageLabel}</div>
+          <div className="tb-left"><span className="tb-logo"><Logo size={32} /></span><div className="tb-t">{pageLabel}</div></div>
           <div className="tb-c">{now.toLocaleTimeString("en-AU", { timeZone: SYD, hour: "numeric", minute: "2-digit", second: "2-digit" })} {tzLabel(now)} · Sydney</div>
         </div>
 
