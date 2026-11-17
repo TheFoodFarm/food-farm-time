@@ -9,7 +9,7 @@ import {
   Clock, MapPin, Coffee, LogIn, LogOut, Users, Download, Plus, X, AlertCircle, CheckCircle2,
   History, UserPlus, Calendar, ChevronLeft, ChevronRight, Edit2, Building2, Bell, Send, Check,
   Utensils, Briefcase, Truck, Package, Tractor, RefreshCw, Mail, Egg, BarChart2, Trash2,
-  Activity, Smartphone, Lock, Copy, User, Settings
+  Activity, Smartphone, Lock, Copy, User, Settings, MoreHorizontal
 } from "lucide-react";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -78,8 +78,10 @@ const tzLabel = (d) => {
 };
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString("en-AU", { timeZone: SYD, hour: "numeric", minute: "2-digit" });
 const fmtDateShort = (iso) => new Date(iso).toLocaleDateString("en-AU", { timeZone: SYD, weekday: "short", day: "numeric", month: "short" });
-const fmtDur = (ms) => { if (!ms || ms < 0) ms = 0; return Math.floor(ms / 3600000) + "h " + Math.floor((ms % 3600000) / 60000) + "m"; };
+// Hours are shown as decimals (7.42 h); break time is shown in minutes (35 min).
+const fmtMin = (ms) => Math.round(Math.max(0, ms || 0) / 60000) + " min";
 const fmtHrs = (ms) => (Math.max(0, ms || 0) / 3600000).toFixed(2);
+const fmtH = (ms) => fmtHrs(ms) + " h";
 
 // "YYYY-MM-DDTHH:mm" in Sydney wall-clock  <->  ISO (UTC)
 const isoToSydInput = (iso) => {
@@ -151,7 +153,7 @@ const entryStats = (e) => {
   const breakMs = bs.reduce((a, b) => a + b.ms, 0);
   const paidMs = bs.reduce((a, b) => a + b.paidMs, 0);
   const unpaidMs = bs.reduce((a, b) => a + b.unpaidMs, 0);
-  return { total: total, breakMs: breakMs, paidMs: paidMs, unpaidMs: unpaidMs, worked: Math.max(0, total - unpaidMs) };
+  return { total: total, breakMs: breakMs, paidMs: paidMs, unpaidMs: unpaidMs, worked: Math.round(Math.max(0, total - unpaidMs) / 60000) * 60000 };
 };
 
 // Turn "minutes" rows into real start/end times. Rows without a start time are
@@ -385,24 +387,86 @@ select.finp{appearance:auto}
 .url-box{font-size:12px;background:#f6f6f7;border:1px solid var(--line);border-radius:var(--rs);padding:8px 10px;word-break:break-all}
 
 .bottom-nav{display:none}
+.btn-lbl{display:none}
+.seg .lbl{display:flex;align-items:center;justify-content:center}
+table.stack td.rowtitle{font-weight:600}
 @media (max-width:768px){
+  html{-webkit-text-size-adjust:100%}
+  body{-webkit-tap-highlight-color:transparent}
+  .app{min-height:100dvh}
+  .hide-sm{display:none}
+  .fb-spacer{display:none}
+  .btn-lbl{display:inline}
   .sidebar{display:none}
-  .bottom-nav{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:50;background:var(--redd);height:62px;padding-bottom:env(safe-area-inset-bottom)}
-  .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:none;color:rgba(255,255,255,.6);font-size:10px;font-weight:500;cursor:pointer;padding:6px 2px}
+  .bottom-nav{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:50;background:var(--redd);height:calc(64px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom)}
+  .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:none;background:none;color:rgba(255,255,255,.62);font-size:10.5px;font-weight:500;cursor:pointer;padding:6px 2px;min-height:56px}
   .bnav-btn.active{color:#fff}
   .bnav-btn.active svg{stroke-width:2.6}
-  .page{padding:16px 14px 88px}
+  .page{padding:14px 14px calc(88px + env(safe-area-inset-bottom))}
   .g2{grid-template-columns:1fr}
-  .g3{grid-template-columns:1fr 1fr}
-  .kpi-grid{grid-template-columns:1fr 1fr}
-  .topbar{padding:0 16px;height:54px}
+  .g3{grid-template-columns:1fr}
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .kpi{padding:14px}
+  .kpi-val{font-size:22px}
+  .topbar{padding:0 14px;height:54px}
   .tb-logo{display:inline-flex;margin-right:10px}
   .tb-left{display:flex;align-items:center}
   .tb-t{font-size:16px}
+  .card-h{padding:12px 14px}
+  .card-b{padding:14px}
   .stat-label{min-width:100px;font-size:12px}
-  th,td{padding:9px 10px}
   .login-top{padding:24px}
   .login-body{padding:22px}
+
+  /* bigger touch targets; 16px inputs stop iPhones zooming in on focus */
+  .btn{min-height:44px;padding:10px 16px;font-size:14px}
+  .btn-sm{min-height:40px;min-width:40px;padding:8px 12px;font-size:13px}
+  .btn-lg{min-height:56px;font-size:16px}
+  .finp{font-size:16px;min-height:46px;padding:11px 12px}
+  textarea.finp{min-height:0}
+  .seg button{min-height:44px;padding:8px 14px}
+  .dept-list li{padding:17px 20px}
+  .dept-list li:hover{background:none;color:inherit}
+  .dept-list li:active{background:var(--redbg);color:var(--red)}
+  .nav-btn{min-height:44px}
+
+  /* filter bars (reports, timesheets) stack neatly */
+  .filter-bar{gap:8px}
+  .filter-bar .finp{width:100% !important}
+  .filter-bar .seg{width:100%}
+  .filter-bar .seg .lbl{flex:1;text-align:center;font-size:12.5px}
+  .filter-bar .btn{flex:1}
+
+  /* tables turn into stacked cards */
+  table.stack{display:block}
+  table.stack thead{display:none}
+  table.stack tbody{display:block}
+  table.stack tr{display:block;padding:12px 14px;border-bottom:1px solid var(--line)}
+  table.stack tr:last-child{border-bottom:none}
+  table.stack td{display:flex;justify-content:space-between;align-items:center;gap:14px;border:none;padding:5px 0;text-align:right}
+  table.stack td::before{content:attr(data-label);color:var(--ink3);font-size:12px;font-weight:500;text-align:left;flex-shrink:0}
+  table.stack td:not([data-label])::before{content:none}
+  table.stack td:not([data-label]){justify-content:flex-end}
+  table.stack td.rowtitle{justify-content:flex-start;text-align:left;padding-bottom:7px;font-size:15px}
+  table.stack td:not([data-label]) .row{width:100%;gap:8px;padding-top:6px}
+  table.stack td:not([data-label]) .row .btn{flex:1;border:1px solid var(--line);background:#fff}
+  table.stack td:empty{display:none}
+  table.stack tbody tr:hover td{background:none}
+  table.stack tr.totalrow{background:#fafafb}
+
+  /* calendars */
+  .cal-day{min-height:56px;padding:3px}
+  .cal-chip{font-size:8px;padding:1px 2px}
+
+  /* pop-ups slide up from the bottom, with buttons that stay in reach */
+  .overlay{align-items:flex-end;padding:0}
+  .modal,.modal.wide{max-width:none;max-height:92dvh;border-radius:18px 18px 0 0;animation:sheet .2s ease-out}
+  .modal-f{position:sticky;bottom:0;background:var(--surface);padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+  .modal-f .btn{flex:1}
+  @keyframes sheet{from{transform:translateY(40px);opacity:.6}to{transform:none;opacity:1}}
+
+  /* messages sit above the bottom bar */
+  .toast{bottom:calc(78px + env(safe-area-inset-bottom))}
 }
 `;
 
@@ -462,6 +526,15 @@ export default function App() {
   const [eeIn, setEeIn] = useState("");
   const [eeOut, setEeOut] = useState("");
   const [eeNote, setEeNote] = useState("");
+  const [eeDept, setEeDept] = useState("");
+  const [showAddEntry, setShowAddEntry] = useState(false);
+  const [aeStaff, setAeStaff] = useState("");
+  const [aeDept, setAeDept] = useState("");
+  const [aeIn, setAeIn] = useState("");
+  const [aeOut, setAeOut] = useState("");
+  const [aeRows, setAeRows] = useState([]);
+  const [aeNote, setAeNote] = useState("");
+  const [showMore, setShowMore] = useState(false);
   const [breakEdit, setBreakEdit] = useState(null); // { entry, rows }
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
@@ -720,7 +793,7 @@ export default function App() {
     const existing = (myActive.breaks || []).map((b) => (b.end ? b : Object.assign({}, b, { end: outISO })));
     const extra = placeBreaks(retroRows, myActive.clockIn, outISO);
     const updated = Object.assign({}, myActive, { breaks: existing.concat(extra), clockOut: outISO });
-    if (await saveEntry(updated)) showToast("Clocked out – " + fmtDur(entryStats(updated).worked) + " worked");
+    if (await saveEntry(updated)) showToast("Clocked out – " + fmtH(entryStats(updated).worked) + " worked");
     setShowRetro(false);
     setRetroRows([]);
     finishNfc();
@@ -745,6 +818,7 @@ export default function App() {
     setEeIn(isoToSydInput(e.clockIn));
     setEeOut(isoToSydInput(e.clockOut));
     setEeNote(e.note || "");
+    setEeDept(e.department || "");
   };
   const doSaveEdit = () => runOnce(async () => {
     const nowMs = Date.now();
@@ -755,7 +829,7 @@ export default function App() {
     if (outISO && new Date(outISO).getTime() > nowMs) { showToast("Clock-out can't be in the future", "err"); return; }
     if (outISO && new Date(outISO).getTime() <= new Date(inISO).getTime()) { showToast("Clock-out must be after clock-in", "err"); return; }
     const updated = Object.assign({}, editingEntry, {
-      clockIn: inISO, clockOut: outISO, note: eeNote, edited: true,
+      clockIn: inISO, clockOut: outISO, note: eeNote, department: eeDept || editingEntry.department, edited: true,
       editedBy: profile.name, editedAt: new Date().toISOString()
     });
     if (await saveEntry(updated)) { setEditingEntry(null); showToast("Entry updated"); }
@@ -776,6 +850,37 @@ export default function App() {
     if (placed.some((b) => new Date(b.end).getTime() > nowMs)) { showToast("Breaks can't end in the future", "err"); return; }
     const updated = Object.assign({}, e, { breaks: placed, edited: true, editedBy: profile.name, editedAt: new Date().toISOString() });
     if (await saveEntry(updated)) { setBreakEdit(null); showToast("Breaks updated"); }
+  });
+
+  const openAddEntry = () => {
+    const y = addDaysKey(todayKey, -1);
+    setAeStaff(""); setAeDept(""); setAeIn(y + "T07:00"); setAeOut(y + "T15:00"); setAeRows([]); setAeNote("");
+    setShowAddEntry(true);
+  };
+  const doAddEntry = () => runOnce(async () => {
+    const person = everyone.find((x) => x.id === aeStaff);
+    if (!person) { showToast("Choose a team member", "err"); return; }
+    if (!aeDept) { showToast("Choose a department", "err"); return; }
+    const inISO = sydInputToISO(aeIn);
+    const outISO = sydInputToISO(aeOut);
+    if (!inISO || !outISO) { showToast("Enter both a clock-in and a clock-out time", "err"); return; }
+    const nowMs = Date.now();
+    const a = new Date(inISO).getTime();
+    const b = new Date(outISO).getTime();
+    if (a > nowMs || b > nowMs) { showToast("Shifts can't be in the future", "err"); return; }
+    if (b <= a) { showToast("Clock-out must be after clock-in", "err"); return; }
+    const brkMin = aeRows.reduce((t, r) => t + (Number(r.minutes) > 0 ? Number(r.minutes) : 0), 0);
+    if (brkMin * 60000 >= b - a) { showToast("The breaks are longer than the shift", "err"); return; }
+    const clash = entries.find((e) => e.staffId === person.id && new Date(e.clockIn).getTime() < b && (e.clockOut ? new Date(e.clockOut).getTime() : nowMs) > a);
+    if (clash) { showToast("That overlaps " + person.name + "'s shift on " + fmtDateShort(clash.clockIn) + " (" + fmtTime(clash.clockIn) + "). Edit that shift instead.", "err"); return; }
+    const entry = {
+      id: "e_" + Date.now() + "_" + person.id.slice(0, 4) + "m",
+      staffId: person.id, staffName: person.name, department: aeDept,
+      clockIn: inISO, clockOut: outISO, breaks: placeBreaks(aeRows, inISO, outISO),
+      note: ((aeNote ? aeNote + " " : "") + "[Added manually by " + profile.name + "]").trim(),
+      manual: true, addedBy: profile.name, addedAt: new Date().toISOString()
+    };
+    if (await saveEntry(entry)) { setShowAddEntry(false); showToast("Shift added – " + fmtH(entryStats(entry).worked)); }
   });
 
   const doDeleteEntry = (id) => runOnce(async () => {
@@ -980,9 +1085,9 @@ export default function App() {
     });
     rows.push([]);
     rows.push(["WEEKLY SUMMARY – " + weekLabel(rep.from)]);
-    rows.push(["Staff", "Mon–Fri hours", "Saturday hours", "Sunday hours", "Total hours", "Break total (min)", "Unpaid break deducted (min)"]);
+    rows.push(["Staff", "Mon–Fri hours", "Saturday hours", "Sunday hours", "Total hours", "Break total (hours)", "Unpaid break deducted (hours)"]);
     rep.list.forEach((P) => {
-      rows.push([P.name, fmtHrs(P.weekday), fmtHrs(P.sat), fmtHrs(P.sun), fmtHrs(P.worked), Math.round(P.breakMs / 60000), Math.round(P.unpaidMs / 60000)]);
+      rows.push([P.name, fmtHrs(P.weekday), fmtHrs(P.sat), fmtHrs(P.sun), fmtHrs(P.worked), fmtHrs(P.breakMs), fmtHrs(P.unpaidMs)]);
     });
     downloadCSV("foodfarm-hours-" + rep.from + ".csv", rows);
     showToast("Exported week of " + fmtKey(rep.from));
@@ -992,11 +1097,11 @@ export default function App() {
     let body = "The Food Farm – hours summary\nWeek: " + weekLabel(rep.from) + "\n\n";
     if (!rep.list.length) body += "No completed shifts this week.\n";
     rep.list.forEach((P) => {
-      body += P.name + " – total " + fmtDur(P.worked) + "\n";
-      body += "  Mon–Fri: " + fmtDur(P.weekday) + "\n";
-      body += "  Saturday: " + fmtDur(P.sat) + "\n";
-      body += "  Sunday: " + fmtDur(P.sun) + "\n";
-      body += "  Breaks: " + fmtDur(P.breakMs) + " (" + fmtDur(P.unpaidMs) + " unpaid, deducted)\n\n";
+      body += P.name + " – total " + fmtH(P.worked) + "\n";
+      body += "  Mon–Fri: " + fmtH(P.weekday) + "\n";
+      body += "  Saturday: " + fmtH(P.sat) + "\n";
+      body += "  Sunday: " + fmtH(P.sun) + "\n";
+      body += "  Breaks: " + fmtH(P.breakMs) + " (" + fmtH(P.unpaidMs) + " unpaid, deducted)\n\n";
     });
     mailto(MANAGER, "The Food Farm – hours " + weekLabel(rep.from), body);
   };
@@ -1018,6 +1123,9 @@ export default function App() {
     ];
   const NAV_FLAT = NAV.reduce((a, g) => a.concat(g.items), []);
   const pageLabel = (NAV_FLAT.find((n) => n.id === view) || { label: "" }).label;
+  const BOTTOM_ADMIN = ["live", "timesheets", "reports", "staff"];
+  const NAV_BOTTOM = isAdmin ? NAV_FLAT.filter((n) => BOTTOM_ADMIN.indexOf(n.id) !== -1) : NAV_FLAT;
+  const NAV_MORE = isAdmin ? NAV_FLAT.filter((n) => BOTTOM_ADMIN.indexOf(n.id) === -1) : [];
 
   const groupByWeek = (list) => {
     const map = {};
@@ -1033,7 +1141,7 @@ export default function App() {
 
   const renderEntryTable = (list, canDelete) => (
     <div className="tbl-wrap">
-      <table>
+      <table className="stack">
         <thead>
           <tr><th>Date</th><th>Dept</th><th>In</th><th>Out</th><th>Breaks</th><th>Worked</th><th></th></tr>
         </thead>
@@ -1042,24 +1150,25 @@ export default function App() {
             const st = entryStats(e);
             return (
               <tr key={e.id}>
-                <td className="mono">{fmtDateShort(e.clockIn)}</td>
-                <td className="muted">{deptLabel(e.department)}</td>
-                <td className="mono">{fmtTime(e.clockIn)}</td>
-                <td className="mono">{e.clockOut ? fmtTime(e.clockOut) : <span className="badge b-green">Active</span>}</td>
-                <td className="mono muted">
-                  {st.breakMs > 0 ? fmtDur(st.breakMs) : "—"}
-                  {st.unpaidMs > 0 ? <span className="small"> · {fmtDur(st.unpaidMs)} unpaid</span> : null}
-                </td>
-                <td className="mono strong">
-                  {fmtDur(st.worked)}
+                <td className="mono rowtitle">{fmtDateShort(e.clockIn)}</td>
+                <td className="muted" data-label="Dept">{deptLabel(e.department)}</td>
+                <td className="mono" data-label="In">{fmtTime(e.clockIn)}</td>
+                <td className="mono" data-label="Out">{e.clockOut ? fmtTime(e.clockOut) : <span className="badge b-green">Active</span>}</td>
+                <td className="mono muted" data-label="Breaks"><span>
+                  {st.breakMs > 0 ? fmtMin(st.breakMs) : "—"}
+                  {st.unpaidMs > 0 ? <span className="small"> · {fmtMin(st.unpaidMs)} unpaid</span> : null}
+                </span></td>
+                <td className="mono strong" data-label="Worked"><span>
+                  {fmtH(st.worked)}
                   {e.autoClosed ? <span className="badge b-amber" style={{ marginLeft: 6 }}>Auto</span> : null}
                   {e.edited ? <span className="badge b-gray" style={{ marginLeft: 6 }}>Edited</span> : null}
-                </td>
+                  {e.manual ? <span className="badge b-blue" style={{ marginLeft: 6 }}>Added</span> : null}
+                </span></td>
                 <td>
                   <div className="row gap4">
-                    <button className="btn btn-g btn-sm" title="Edit breaks" onClick={() => openBreakEditor(e)}><Coffee size={14} /></button>
-                    <button className="btn btn-g btn-sm" title="Edit times" onClick={() => openEdit(e)}><Edit2 size={14} /></button>
-                    {canDelete ? <button className="btn btn-g btn-sm" style={{ color: "var(--red)" }} title="Delete" onClick={() => setDeleteConfirm(e)}><Trash2 size={14} /></button> : null}
+                    <button className="btn btn-g btn-sm" title="Edit breaks" onClick={() => openBreakEditor(e)}><Coffee size={14} /><span className="btn-lbl">Breaks</span></button>
+                    <button className="btn btn-g btn-sm" title="Edit times" onClick={() => openEdit(e)}><Edit2 size={14} /><span className="btn-lbl">Edit</span></button>
+                    {canDelete ? <button className="btn btn-g btn-sm" style={{ color: "var(--red)" }} title="Delete" onClick={() => setDeleteConfirm(e)}><Trash2 size={14} /><span className="btn-lbl">Delete</span></button> : null}
                   </div>
                 </td>
               </tr>
@@ -1083,8 +1192,8 @@ export default function App() {
               <div className="card-t">Week of {weekLabel(w.key)}</div>
             </div>
             <div className="row gap8 wrap">
-              <span className="badge b-gray">Breaks {fmtDur(w.breakMs)}</span>
-              <span className="badge b-green">{fmtDur(w.worked)} worked</span>
+              <span className="badge b-gray">Breaks {fmtH(w.breakMs)}</span>
+              <span className="badge b-green">{fmtH(w.worked)} worked</span>
             </div>
           </div>
           {isOpen ? renderEntryTable(w.entries, canDelete) : null}
@@ -1181,7 +1290,7 @@ export default function App() {
                     <li key={e.id}>
                       <div>
                         <div className="strong">{e.staffName}</div>
-                        <div className="small muted">{deptLabel(e.department)} · since {fmtTime(e.clockIn)} · {fmtDur(entryStats(e).worked)} so far</div>
+                        <div className="small muted">{deptLabel(e.department)} · since {fmtTime(e.clockIn)} · {fmtH(entryStats(e).worked)} so far</div>
                       </div>
                       {ob ? <span className="badge b-amber"><Coffee size={11} /> {ob.type === "meal" ? "Meal break" : "Rest break"}</span> : <span className="badge b-green">Working</span>}
                     </li>
@@ -1239,7 +1348,7 @@ export default function App() {
                 <div className={heroClass}>
                   <div className="small muted" style={{ marginBottom: 4 }}>Hi {profile.name}</div>
                   {!myActive ? <div className="big">You're clocked out</div> : null}
-                  {myActive && !myOpenBreak ? <div className="big">Working · {fmtDur(entryStats(myActive).worked)}</div> : null}
+                  {myActive && !myOpenBreak ? <div className="big">Working · {fmtH(entryStats(myActive).worked)}</div> : null}
                   {myActive && myOpenBreak ? <div className="big">{myOpenBreak.type === "meal" ? "On meal break" : "On rest break"}</div> : null}
                   {myActive ? <div className="small muted" style={{ marginTop: 4 }}>{deptLabel(myActive.department)} · since {fmtTime(myActive.clockIn)}</div> : null}
                 </div>
@@ -1270,7 +1379,7 @@ export default function App() {
             </div>
           </div>
           <div className="col gap16">
-            <div className="kpi red"><div className="kpi-val">{fmtDur(weekWorked)}</div><div className="kpi-lbl">Worked this week so far</div></div>
+            <div className="kpi red"><div className="kpi-val">{fmtH(weekWorked)}</div><div className="kpi-lbl">Worked this week so far</div></div>
             <div className="card">
               <div className="card-h"><div className="card-t">Your next shifts</div></div>
               {upcoming.length === 0
@@ -1308,14 +1417,16 @@ export default function App() {
             <option value="all">Everyone</option>
             {everyone.filter((s) => s.role === "staff").map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <span className="muted small">{entries.length} shifts in total · for week-by-week hours and export, use Reports</span>
+          <span className="muted small hide-sm">{entries.length} shifts in total · for week-by-week hours and export, use Reports</span>
+          <div className="fb-spacer" style={{ flex: 1 }} />
+          <button className="btn btn-p" onClick={openAddEntry}><Plus size={14} /> Add shift</button>
         </div>
         {plist.length === 0 ? <div className="card"><div className="card-b muted" style={{ textAlign: "center", fontStyle: "italic" }}>No entries yet.</div></div> : null}
         {plist.map((P) => (
           <div key={P.id} style={{ marginBottom: 26 }}>
             <div className="row between mb12">
               <div style={{ fontSize: 18, fontWeight: 600 }}>{P.name}</div>
-              <span className="badge b-gray">All time: {fmtDur(P.list.reduce((a, e) => a + entryStats(e).worked, 0))}</span>
+              <span className="badge b-gray">All time: {fmtH(P.list.reduce((a, e) => a + entryStats(e).worked, 0))}</span>
             </div>
             {renderWeekBlocks(P.list, true, P.id + "-")}
           </div>
@@ -1333,22 +1444,22 @@ export default function App() {
       return (
         <div className="page" style={{ maxWidth: 720 }}>
           <div className="kpi-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <div className="kpi red"><div className="kpi-val">{fmtDur(thisWk ? thisWk.worked : 0)}</div><div className="kpi-lbl">This week</div></div>
-            <div className="kpi"><div className="kpi-val">{fmtDur(lastWk ? lastWk.worked : 0)}</div><div className="kpi-lbl">Last week</div></div>
+            <div className="kpi red"><div className="kpi-val">{fmtH(thisWk ? thisWk.worked : 0)}</div><div className="kpi-lbl">This week</div></div>
+            <div className="kpi"><div className="kpi-val">{fmtH(lastWk ? lastWk.worked : 0)}</div><div className="kpi-lbl">Last week</div></div>
           </div>
           <div className="card">
             <div className="card-h"><div className="card-t">Hours by week</div></div>
             {weeks.length === 0
               ? <div className="card-b muted" style={{ fontStyle: "italic" }}>Your weekly totals will appear here after your first shift.</div>
-              : <div className="tbl-wrap"><table>
+              : <div className="tbl-wrap"><table className="stack">
                 <thead><tr><th>Week</th><th>Shifts</th><th>Breaks</th><th>Worked</th></tr></thead>
                 <tbody>
                   {weeks.map((w) => (
                     <tr key={w.key}>
-                      <td className="strong">{weekLabel(w.key)}</td>
-                      <td className="mono">{w.entries.length}</td>
-                      <td className="mono muted">{fmtDur(w.breakMs)}</td>
-                      <td className="mono strong">{fmtDur(w.worked)}</td>
+                      <td className="strong rowtitle">{weekLabel(w.key)}</td>
+                      <td className="mono" data-label="Shifts">{w.entries.length}</td>
+                      <td className="mono muted" data-label="Breaks">{fmtH(w.breakMs)}</td>
+                      <td className="mono strong" data-label="Worked">{fmtH(w.worked)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1379,15 +1490,15 @@ export default function App() {
             <option value="all">Everyone</option>
             {everyone.filter((s) => s.role === "staff").map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <div style={{ flex: 1 }} />
+          <div className="fb-spacer" style={{ flex: 1 }} />
           <button className="btn btn-o" onClick={() => emailWeekSummary(rep)}><Mail size={14} /> Email summary</button>
           <button className="btn btn-p" onClick={() => exportWeekCSV(rep)}><Download size={14} /> Export week</button>
         </div>
 
         <div className="kpi-grid">
-          <div className="kpi red"><div className="kpi-val">{fmtHrs(totWorked)}<small>hrs</small></div><div className="kpi-lbl">Total worked</div></div>
-          <div className="kpi"><div className="kpi-val">{fmtDur(totBreak)}</div><div className="kpi-lbl">Total break time</div></div>
-          <div className="kpi"><div className="kpi-val">{fmtDur(totUnpaid)}</div><div className="kpi-lbl">Unpaid breaks deducted</div></div>
+          <div className="kpi red"><div className="kpi-val">{fmtHrs(totWorked)}<small>h</small></div><div className="kpi-lbl">Total worked</div></div>
+          <div className="kpi"><div className="kpi-val">{fmtH(totBreak)}</div><div className="kpi-lbl">Total break time</div></div>
+          <div className="kpi"><div className="kpi-val">{fmtH(totUnpaid)}</div><div className="kpi-lbl">Unpaid breaks deducted</div></div>
           <div className="kpi"><div className="kpi-val">{rep.list.length}</div><div className="kpi-lbl">People with hours</div></div>
         </div>
         {rep.activeCount > 0 ? <div className="msg-ok" style={{ background: "var(--amberbg)", color: "var(--amber)" }}>{rep.activeCount} shift{rep.activeCount > 1 ? "s are" : " is"} still open this week and not counted yet.</div> : null}
@@ -1399,18 +1510,18 @@ export default function App() {
             <div className="card-h">
               <div style={{ fontSize: 16, fontWeight: 600 }}>{P.name}</div>
               <div className="pill-row">
-                <div className="pill">Total<b>{fmtDur(P.worked)}</b></div>
-                <div className="pill">Breaks<b>{fmtDur(P.breakMs)}</b></div>
-                <div className="pill">Unpaid deducted<b>{fmtDur(P.unpaidMs)}</b></div>
+                <div className="pill">Total<b>{fmtH(P.worked)}</b></div>
+                <div className="pill">Breaks<b>{fmtH(P.breakMs)}</b></div>
+                <div className="pill">Unpaid deducted<b>{fmtH(P.unpaidMs)}</b></div>
               </div>
             </div>
             <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--line)" }} className="pill-row">
-              <div className="pill">Mon–Fri<b>{fmtDur(P.weekday)}</b></div>
-              <div className="pill">Saturday<b>{fmtDur(P.sat)}</b></div>
-              <div className="pill">Sunday<b>{fmtDur(P.sun)}</b></div>
+              <div className="pill">Mon–Fri<b>{fmtH(P.weekday)}</b></div>
+              <div className="pill">Saturday<b>{fmtH(P.sat)}</b></div>
+              <div className="pill">Sunday<b>{fmtH(P.sun)}</b></div>
             </div>
             <div className="tbl-wrap">
-              <table>
+              <table className="stack">
                 <thead><tr><th>Day</th><th>Department</th><th>Clocked</th><th>Breaks</th><th>Unpaid</th><th>Worked</th></tr></thead>
                 <tbody>
                   {Object.keys(P.days).sort().map((k) => {
@@ -1418,20 +1529,20 @@ export default function App() {
                     const sorted = D.entries.slice().sort((a, b) => new Date(a.clockIn) - new Date(b.clockIn));
                     return (
                       <tr key={k}>
-                        <td className="strong">{fmtKey(k)}{HOLIDAYS[k] ? <span className="badge b-amber" style={{ marginLeft: 6 }}>{HOLIDAYS[k]}</span> : null}</td>
-                        <td className="muted">{Array.from(new Set(sorted.map((e) => deptLabel(e.department)))).join(", ")}</td>
-                        <td className="mono muted">{sorted.map((e) => fmtTime(e.clockIn) + " – " + fmtTime(e.clockOut)).join(", ")}</td>
-                        <td className="mono muted">{D.breakMs > 0 ? fmtDur(D.breakMs) : "—"}</td>
-                        <td className="mono muted">{D.unpaidMs > 0 ? fmtDur(D.unpaidMs) : "—"}</td>
-                        <td className="mono strong">{fmtDur(D.worked)}</td>
+                        <td className="strong rowtitle">{fmtKey(k)}{HOLIDAYS[k] ? <span className="badge b-amber" style={{ marginLeft: 6 }}>{HOLIDAYS[k]}</span> : null}</td>
+                        <td className="muted" data-label="Department">{Array.from(new Set(sorted.map((e) => deptLabel(e.department)))).join(", ")}</td>
+                        <td className="mono muted" data-label="Clocked">{sorted.map((e) => fmtTime(e.clockIn) + " – " + fmtTime(e.clockOut)).join(", ")}</td>
+                        <td className="mono muted" data-label="Breaks">{D.breakMs > 0 ? fmtMin(D.breakMs) : "—"}</td>
+                        <td className="mono muted" data-label="Unpaid">{D.unpaidMs > 0 ? fmtMin(D.unpaidMs) : "—"}</td>
+                        <td className="mono strong" data-label="Worked">{fmtH(D.worked)}</td>
                       </tr>
                     );
                   })}
                   <tr className="totalrow">
-                    <td>Week total</td><td></td><td></td>
-                    <td className="mono">{fmtDur(P.breakMs)}</td>
-                    <td className="mono">{fmtDur(P.unpaidMs)}</td>
-                    <td className="mono">{fmtDur(P.worked)}</td>
+                    <td className="rowtitle">Week total</td><td></td><td></td>
+                    <td className="mono" data-label="Breaks">{fmtH(P.breakMs)}</td>
+                    <td className="mono" data-label="Unpaid">{fmtH(P.unpaidMs)}</td>
+                    <td className="mono" data-label="Worked">{fmtH(P.worked)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1465,7 +1576,7 @@ export default function App() {
       {renderCalendar("roster")}
       <div className="card">
         <div className="card-h"><div className="card-t">All shifts</div></div>
-        <div className="tbl-wrap"><table>
+        <div className="tbl-wrap"><table className="stack">
           <thead><tr><th>Staff</th><th>Date</th><th>Start</th><th>End</th><th></th></tr></thead>
           <tbody>
             {roster.length === 0 ? <tr><td colSpan={5} className="muted" style={{ textAlign: "center", fontStyle: "italic", padding: 20 }}>No shifts added</td></tr> : null}
@@ -1473,8 +1584,8 @@ export default function App() {
               const s = staffAll.find((x) => x.id === r.staffId);
               return (
                 <tr key={r.id}>
-                  <td className="strong">{s ? s.name : "—"}</td>
-                  <td className="mono">{r.date}</td><td className="mono">{r.startTime}</td><td className="mono">{r.endTime || "—"}</td>
+                  <td className="strong rowtitle">{s ? s.name : "—"}</td>
+                  <td className="mono" data-label="Date">{r.date}</td><td className="mono" data-label="Start">{r.startTime}</td><td className="mono" data-label="End">{r.endTime || "—"}</td>
                   <td><button className="btn btn-g btn-sm" style={{ color: "var(--red)" }} onClick={async () => { try { await deleteDoc(doc(db, "roster", r.id)); showToast("Shift removed"); } catch (e) { showToast("Couldn't remove it", "err"); } }}><X size={14} /></button></td>
                 </tr>
               );
@@ -1495,17 +1606,17 @@ export default function App() {
         {renderCalendar("leave")}
         <div className="card">
           <div className="card-h"><div className="card-t">{isAdmin ? "Leave requests" : "My leave requests"}</div></div>
-          <div className="tbl-wrap"><table>
+          <div className="tbl-wrap"><table className="stack">
             <thead><tr>{isAdmin ? <th>Staff</th> : null}<th>Type</th><th>From</th><th>To</th><th>Note</th><th>Status</th>{isAdmin ? <th></th> : null}</tr></thead>
             <tbody>
               {list.length === 0 ? <tr><td colSpan={7} className="muted" style={{ textAlign: "center", fontStyle: "italic", padding: 20 }}>No requests</td></tr> : null}
               {list.map((l) => (
                 <tr key={l.id}>
-                  {isAdmin ? <td className="strong">{l.staffName}</td> : null}
-                  <td style={{ textTransform: "capitalize" }}>{l.type}</td>
-                  <td className="mono">{l.from}</td><td className="mono">{l.to}</td>
-                  <td className="muted">{l.note || "—"}</td>
-                  <td>{l.status === "approved" ? <span className="badge b-green">Approved</span> : l.status === "declined" ? <span className="badge b-red">Declined</span> : <span className="badge b-amber">Pending</span>}</td>
+                  {isAdmin ? <td className="strong rowtitle">{l.staffName}</td> : null}
+                  <td style={{ textTransform: "capitalize" }} data-label="Type">{l.type}</td>
+                  <td className="mono" data-label="From">{l.from}</td><td className="mono" data-label="To">{l.to}</td>
+                  <td className="muted" data-label="Note">{l.note || "—"}</td>
+                  <td data-label="Status">{l.status === "approved" ? <span className="badge b-green">Approved</span> : l.status === "declined" ? <span className="badge b-red">Declined</span> : <span className="badge b-amber">Pending</span>}</td>
                   {isAdmin ? (
                     <td>{l.status === "pending" ? (
                       <div className="row gap4">
@@ -1548,7 +1659,7 @@ export default function App() {
                     {s.role === "admin" ? <span className="badge b-red">Admin</span> : s.active === false ? <span className="badge b-gray">Deactivated</span> : ae ? <span className="badge b-green">On shift</span> : <span className="badge b-gray">Off</span>}
                   </div>
                   <div className="small muted mb12" style={{ wordBreak: "break-all" }}>{s.email}</div>
-                  <div className="small muted mb12">This week: <b style={{ color: "var(--ink)" }}>{fmtDur(wkMs)}</b></div>
+                  <div className="small muted mb12">This week: <b style={{ color: "var(--ink)" }}>{fmtH(wkMs)}</b></div>
                   <div className="row gap4 wrap">
                     <button className="btn btn-o btn-sm" onClick={() => { setEditStaff(s); setEsName(s.name); }}><Edit2 size={12} /> Name</button>
                     <button className="btn btn-o btn-sm" onClick={() => sendReset(s)}><Lock size={12} /> Reset password</button>
@@ -1691,7 +1802,7 @@ export default function App() {
       <div className="main">
         <div className="topbar">
           <div className="tb-left"><span className="tb-logo"><Logo size={32} /></span><div className="tb-t">{pageLabel}</div></div>
-          <div className="tb-c">{now.toLocaleTimeString("en-AU", { timeZone: SYD, hour: "numeric", minute: "2-digit", second: "2-digit" })} {tzLabel(now)} · Sydney</div>
+          <div className="tb-c">{now.toLocaleTimeString("en-AU", { timeZone: SYD, hour: "numeric", minute: "2-digit", second: "2-digit" })} {tzLabel(now)}<span className="hide-sm"> · Sydney</span></div>
         </div>
 
         {view === "live" && isAdmin ? renderLive() : null}
@@ -1714,7 +1825,7 @@ export default function App() {
             <div className="modal-h"><div><div className="modal-t">{myActive ? "Clock out?" : (nfcDept ? "Clock in to " + nfcDept.label + "?" : "Clock in")}</div><div className="small muted" style={{ marginTop: 3 }}>Hi {profile.name} · NFC tap</div></div></div>
             {myActive || nfcDept ? (
               <div className="modal-b">
-                <p className="muted" style={{ fontSize: 14 }}>{myActive ? "You've been on shift since " + fmtTime(myActive.clockIn) + " (" + fmtDur(entryStats(myActive).worked) + " worked)." : "It's " + now.toLocaleTimeString("en-AU", { timeZone: SYD, hour: "numeric", minute: "2-digit" }) + " in Sydney."}</p>
+                <p className="muted" style={{ fontSize: 14 }}>{myActive ? "You've been on shift since " + fmtTime(myActive.clockIn) + " (" + fmtH(entryStats(myActive).worked) + " worked)." : "It's " + now.toLocaleTimeString("en-AU", { timeZone: SYD, hour: "numeric", minute: "2-digit" }) + " in Sydney."}</p>
               </div>
             ) : (
               <ul className="dept-list">{DEPTS.map((d) => <li key={d.id} onClick={() => doClockIn(d.id)}><d.Icon size={18} style={{ color: "var(--red)" }} />{d.label}</li>)}</ul>
@@ -1753,7 +1864,7 @@ export default function App() {
                   <button className="btn btn-g btn-sm" onClick={() => setRetroRows((p) => p.filter((_, idx) => idx !== i))}><X size={14} /></button>
                 </div>
               ))}
-              <button className="btn btn-o btn-sm" onClick={() => setRetroRows((p) => p.concat([{ type: "rest", minutes: "" }]))}><Plus size={13} /> Add a break</button>
+              <button className="btn btn-o btn-sm" onClick={() => setRetroRows((p) => p.concat([{ type: "meal", minutes: "" }]))}><Plus size={13} /> Add a break</button>
             </div>
             <div className="modal-f">
               <button className="btn btn-g" onClick={() => { setShowRetro(false); finishNfc(); }}>Cancel</button>
@@ -1771,6 +1882,7 @@ export default function App() {
             <div className="modal-b">
               <div className="fg"><label className="flbl">Clock in</label><input className="finp" type="datetime-local" value={eeIn} max={isoToSydInput(new Date().toISOString())} onChange={(e) => setEeIn(e.target.value)} /></div>
               <div className="fg"><label className="flbl">Clock out</label><input className="finp" type="datetime-local" value={eeOut} max={isoToSydInput(new Date().toISOString())} onChange={(e) => setEeOut(e.target.value)} /></div>
+              <div className="fg"><label className="flbl">Department</label><select className="finp" value={eeDept} onChange={(e) => setEeDept(e.target.value)}>{DEPTS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
               <div className="fg"><label className="flbl">Note (why it was changed)</label><textarea className="finp" rows={2} value={eeNote} onChange={(e) => setEeNote(e.target.value)} /></div>
             </div>
             <div className="modal-f"><button className="btn btn-o" onClick={() => setEditingEntry(null)}>Cancel</button><button className="btn btn-p" onClick={doSaveEdit}><Check size={14} /> Save</button></div>
@@ -1793,10 +1905,40 @@ export default function App() {
                   <button className="btn btn-g btn-sm" onClick={() => setBreakEdit((p) => ({ entry: p.entry, rows: p.rows.filter((_, idx) => idx !== i) }))}><X size={14} /></button>
                 </div>
               ))}
-              <button className="btn btn-o btn-sm" onClick={() => setBreakEdit((p) => ({ entry: p.entry, rows: p.rows.concat([{ type: "rest", minutes: "", startInput: "" }]) }))}><Plus size={13} /> Add a break</button>
+              <button className="btn btn-o btn-sm" onClick={() => setBreakEdit((p) => ({ entry: p.entry, rows: p.rows.concat([{ type: "meal", minutes: "", startInput: "" }]) }))}><Plus size={13} /> Add a break</button>
               <p className="small muted" style={{ marginTop: 12 }}>Leave the start time empty and the break is placed in the middle of the shift.</p>
             </div>
             <div className="modal-f"><button className="btn btn-o" onClick={() => setBreakEdit(null)}>Cancel</button><button className="btn btn-p" onClick={doSaveBreaks}><Check size={14} /> Save breaks</button></div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Add a shift (admin) */}
+      {showAddEntry ? (
+        <div className="overlay" onClick={() => setShowAddEntry(false)}>
+          <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h"><div><div className="modal-t">Add a shift</div><div className="small muted" style={{ marginTop: 3 }}>For a shift that wasn't clocked · Sydney time · past times only</div></div><button className="btn btn-g btn-sm" onClick={() => setShowAddEntry(false)}><X size={16} /></button></div>
+            <div className="modal-b">
+              <div className="fg"><label className="flbl">Team member</label><select className="finp" value={aeStaff} onChange={(e) => setAeStaff(e.target.value)}><option value="">Select…</option>{activeTeam.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
+              <div className="fg"><label className="flbl">Department</label><select className="finp" value={aeDept} onChange={(e) => setAeDept(e.target.value)}><option value="">Select…</option>{DEPTS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
+              <div className="row gap12 wrap">
+                <div className="fg" style={{ flex: 1, minWidth: 200 }}><label className="flbl">Clock in</label><input className="finp" type="datetime-local" value={aeIn} max={isoToSydInput(new Date().toISOString())} onChange={(e) => setAeIn(e.target.value)} /></div>
+                <div className="fg" style={{ flex: 1, minWidth: 200 }}><label className="flbl">Clock out</label><input className="finp" type="datetime-local" value={aeOut} max={isoToSydInput(new Date().toISOString())} onChange={(e) => setAeOut(e.target.value)} /></div>
+              </div>
+              <div className="fg">
+                <label className="flbl">Breaks (optional – just the minutes)</label>
+                {aeRows.map((r, i) => (
+                  <div key={i} className="row gap8 mb12">
+                    <select className="finp" style={{ flex: "0 0 110px" }} value={r.type} onChange={(e) => setAeRows((p) => p.map((x, idx) => idx === i ? Object.assign({}, x, { type: e.target.value }) : x))}><option value="meal">Meal</option><option value="rest">Rest</option></select>
+                    <input className="finp" type="number" inputMode="numeric" min="1" max="480" placeholder="Minutes, e.g. 30" value={r.minutes} onChange={(e) => setAeRows((p) => p.map((x, idx) => idx === i ? Object.assign({}, x, { minutes: e.target.value }) : x))} />
+                    <button className="btn btn-g btn-sm" onClick={() => setAeRows((p) => p.filter((_, idx) => idx !== i))}><X size={14} /></button>
+                  </div>
+                ))}
+                <button className="btn btn-o btn-sm" onClick={() => setAeRows((p) => p.concat([{ type: "meal", minutes: "" }]))}><Plus size={13} /> Add a break</button>
+              </div>
+              <div className="fg"><label className="flbl">Note (optional)</label><textarea className="finp" rows={2} value={aeNote} onChange={(e) => setAeNote(e.target.value)} /></div>
+            </div>
+            <div className="modal-f"><button className="btn btn-o" onClick={() => setShowAddEntry(false)}>Cancel</button><button className="btn btn-p" onClick={doAddEntry}><Plus size={14} /> Add shift</button></div>
           </div>
         </div>
       ) : null}
@@ -1942,12 +2084,28 @@ export default function App() {
 
       {/* Bottom nav (phones) */}
       <nav className="bottom-nav">
-        {NAV_FLAT.map((it) => (
+        {NAV_BOTTOM.map((it) => (
           <button key={it.id} className={view === it.id ? "bnav-btn active" : "bnav-btn"} onClick={() => setView(it.id)}>
-            <it.Icon size={20} />{it.short}
+            <it.Icon size={21} />{it.short}
           </button>
         ))}
+        {NAV_MORE.length > 0 ? (
+          <button className={NAV_MORE.some((n) => n.id === view) ? "bnav-btn active" : "bnav-btn"} onClick={() => setShowMore(true)}>
+            <MoreHorizontal size={21} />More
+          </button>
+        ) : null}
       </nav>
+      {showMore ? (
+        <div className="overlay" onClick={() => setShowMore(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h"><div className="modal-t">More</div><button className="btn btn-g btn-sm" onClick={() => setShowMore(false)}><X size={16} /></button></div>
+            <ul className="dept-list">
+              {NAV_MORE.map((it) => <li key={it.id} onClick={() => { setView(it.id); setShowMore(false); }}><it.Icon size={18} style={{ color: "var(--red)" }} />{it.label}</li>)}
+              <li onClick={() => { setShowMore(false); doSignOut(); }}><LogOut size={18} style={{ color: "var(--red)" }} />Sign out</li>
+            </ul>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
