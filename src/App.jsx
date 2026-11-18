@@ -81,7 +81,12 @@ const fmtDateShort = (iso) => new Date(iso).toLocaleDateString("en-AU", { timeZo
 // Hours are shown as decimals (7.42 h); break time is shown in minutes (35 min).
 const fmtMin = (ms) => Math.round(Math.max(0, ms || 0) / 60000) + " min";
 const fmtHrs = (ms) => (Math.max(0, ms || 0) / 3600000).toFixed(2);
-const fmtH = (ms) => fmtHrs(ms) + " h";
+const fmtHdec = (ms) => fmtHrs(ms) + " h";                 // admin: 7.42 h
+const fmtHM = (ms) => {                                    // team: 7h 25m
+  const t = Math.round(Math.max(0, ms || 0) / 60000);
+  const h = Math.floor(t / 60), m = t % 60;
+  return h > 0 ? h + "h " + m + "m" : m + "m";
+};
 
 // "YYYY-MM-DDTHH:mm" in Sydney wall-clock  <->  ISO (UTC)
 const isoToSydInput = (iso) => {
@@ -146,14 +151,17 @@ const calcBreakSummary = (breaks) => {
   });
 };
 
-const entryStats = (e) => {
+// unit: Hannah (admin) sees decimals, so each shift is rounded to 0.01 h (36 s) and the decimals add up exactly.
+//       The team sees hours + minutes, so each shift is rounded to the whole minute and the minutes add up exactly.
+const entryStatsBase = (e, unit) => {
   const end = e.clockOut ? new Date(e.clockOut).getTime() : Date.now();
   const total = Math.max(0, end - new Date(e.clockIn).getTime());
   const bs = calcBreakSummary(e.breaks);
-  const breakMs = bs.reduce((a, b) => a + b.ms, 0);
-  const paidMs = bs.reduce((a, b) => a + b.paidMs, 0);
-  const unpaidMs = bs.reduce((a, b) => a + b.unpaidMs, 0);
-  return { total: total, breakMs: breakMs, paidMs: paidMs, unpaidMs: unpaidMs, worked: Math.round(Math.max(0, total - unpaidMs) / 60000) * 60000 };
+  // Breaks are rounded to whole minutes; worked time is rounded to `unit` (see above).
+  const breakMs = Math.round(bs.reduce((a, b) => a + b.ms, 0) / 60000) * 60000;
+  const unpaidMs = Math.min(breakMs, Math.round(bs.reduce((a, b) => a + b.unpaidMs, 0) / 60000) * 60000);
+  const paidMs = breakMs - unpaidMs;
+  return { total: total, breakMs: breakMs, paidMs: paidMs, unpaidMs: unpaidMs, worked: Math.round(Math.max(0, total - unpaidMs) / unit) * unit };
 };
 
 // Turn "minutes" rows into real start/end times. Rows without a start time are
@@ -362,6 +370,7 @@ select.finp{appearance:auto}
 .stat-val{font-size:12px;color:var(--ink2);min-width:54px;text-align:right;font-variant-numeric:tabular-nums}
 
 .pill-row{display:flex;gap:8px;flex-wrap:wrap}
+.wk-split{display:flex;gap:8px;flex-wrap:wrap;width:100%}
 .pill{background:#f6f6f7;border:1px solid var(--line);border-radius:var(--rs);padding:6px 11px;font-size:12px;color:var(--ink2)}
 .pill b{color:var(--ink);font-weight:600;margin-left:4px}
 
@@ -386,6 +395,7 @@ select.finp{appearance:auto}
 .break-list li:last-child{border-bottom:none}
 .url-box{font-size:12px;background:#f6f6f7;border:1px solid var(--line);border-radius:var(--rs);padding:8px 10px;word-break:break-all}
 
+.sync-banner{background:var(--amberbg);color:var(--amber);font-size:13px;font-weight:500;padding:10px 28px;border-bottom:1px solid #f0dcb4}
 .bottom-nav{display:none}
 .btn-lbl{display:none}
 .seg .lbl{display:flex;align-items:center;justify-content:center}
@@ -395,6 +405,7 @@ table.stack td.rowtitle{font-weight:600}
   body{-webkit-tap-highlight-color:transparent}
   .app{min-height:100dvh}
   .hide-sm{display:none}
+  .sync-banner{padding:10px 14px}
   .fb-spacer{display:none}
   .btn-lbl{display:inline}
   .sidebar{display:none}
@@ -465,8 +476,8 @@ table.stack td.rowtitle{font-weight:600}
   .modal-f .btn{flex:1}
   @keyframes sheet{from{transform:translateY(40px);opacity:.6}to{transform:none;opacity:1}}
 
-  /* messages sit above the bottom bar */
-  .toast{bottom:calc(78px + env(safe-area-inset-bottom))}
+  /* messages appear at the top so they never cover pop-up sheets or the bottom bar */
+  .toast{bottom:auto;top:calc(64px + env(safe-area-inset-top))}
 }
 `;
 
@@ -512,12 +523,16 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [calMo, setCalMo] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [openWk, setOpenWk] = useState({});
-  const busyRef = useRef(false);
+  const busyRef = useRef({});
 
   // clock flow
   const [showDepts, setShowDepts] = useState(false);
   const [showRetro, setShowRetro] = useState(false);
   const [retroRows, setRetroRows] = useState([]);
+  const [retroEntry, setRetroEntry] = useState(null);
+  const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine !== false);
+  const [pendingWrites, setPendingWrites] = useState(false);
+  const [slowSync, setSlowSync] = useState(false);
   const [nfcPending, setNfcPending] = useState(NFC_PARAM);
 
   // timesheet / editing
@@ -576,6 +591,9 @@ export default function App() {
   const [pwBusy, setPwBusy] = useState(false);
 
   const isAdmin = !!profile && profile.role === "admin";
+  // Hannah (admin): decimal hours.  Everyone else: hours and minutes.
+  const fmtH = (ms) => (isAdmin ? fmtHdec(ms) : fmtHM(ms));
+  const entryStats = (e) => entryStatsBase(e, isAdmin ? 36000 : 60000);
   const everyone = staffAll.filter((s) => s.email).sort((a, b) => a.name.localeCompare(b.name));
   const team = everyone.filter((s) => s.role === "staff");
   const activeTeam = team.filter((s) => s.active !== false);
@@ -591,6 +609,20 @@ export default function App() {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // ── online / offline + "still sending" banner ──────────────────────────────
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+  useEffect(() => {
+    if (!pendingWrites) { setSlowSync(false); return; }
+    const t = setTimeout(() => setSlowSync(true), 3000);
+    return () => clearTimeout(t);
+  }, [pendingWrites]);
 
   // ── auth listener ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -657,7 +689,10 @@ export default function App() {
     unsubs.push(onSnapshot(collection(db, "staff"), (s) => setStaffAll(mapDocs(s)), onErr("staff")));
 
     const eq = admin ? collection(db, "entries") : query(collection(db, "entries"), where("staffId", "==", profile.id));
-    unsubs.push(onSnapshot(eq, (s) => { setEntries(mapDocs(s)); setEntriesReady(true); }, onErr("entries")));
+    unsubs.push(onSnapshot(eq, { includeMetadataChanges: true }, (s) => {
+      setEntries(mapDocs(s)); setEntriesReady(true);
+      setPendingWrites(!!(s.metadata && s.metadata.hasPendingWrites));
+    }, onErr("entries")));
 
     const lq = admin ? collection(db, "leaves") : query(collection(db, "leaves"), where("staffId", "==", profile.id));
     unsubs.push(onSnapshot(lq, (s) => setLeaves(mapDocs(s)), onErr("leaves")));
@@ -673,14 +708,29 @@ export default function App() {
   }, [profile && profile.id, profile && profile.role]);
 
   // ── write helpers (only the changed document is written) ──────────────────
-  const saveEntry = async (e) => {
-    try { await setDoc(doc(db, "entries", e.id), clean(e)); return true; }
-    catch (err) { console.error("saveEntry", err); showToast("Couldn't save. Check your connection and try again.", "err"); return false; }
+  // The change is applied on the phone straight away and sent to the server as soon
+  // as there is signal. We deliberately do NOT wait for the server here: with no
+  // signal that wait never ends and the person is left staring at a stuck screen.
+  const writeCount = useRef(0);
+  const saveEntry = (e) => {
+    writeCount.current += 1;
+    setDoc(doc(db, "entries", e.id), clean(e)).catch((err) => {
+      console.error("saveEntry", err);
+      showToast("The server refused that change – please tell Hannah.", "err");
+    });
+    return true;
   };
-  const runOnce = async (fn) => {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    try { await fn(); } finally { busyRef.current = false; }
+  // Stops accidental double taps (each action is locked for a moment after it runs).
+  const runOnce = async (key, fn) => {
+    if (busyRef.current[key]) return;
+    busyRef.current[key] = true;
+    const before = writeCount.current;
+    try { await fn(); }
+    finally {
+      const saved = writeCount.current !== before;
+      if (saved) setTimeout(() => { busyRef.current[key] = false; }, 700);   // guards against double taps
+      else busyRef.current[key] = false;                                      // nothing saved: allow an immediate retry
+    }
   };
 
   // ── midnight rule ─────────────────────────────────────────────────────────
@@ -750,27 +800,32 @@ export default function App() {
   const nfcOpen = nfcPending !== null && !!profile && !isAdmin && entriesReady && !showRetro && !showDepts;
   const nfcDept = DEPTS.find((d) => d.id === nfcPending);
 
-  // ── GPS ───────────────────────────────────────────────────────────────────
-  const checkGPS = () => new Promise((resolve) => {
-    if (!farmLoc) { resolve(true); return; }
-    if (!navigator.geolocation) { showToast("Location isn't supported on this device", "err"); resolve(false); return; }
+  // ── Location ──────────────────────────────────────────────────────────────
+  // Markets and Deliveries happen away from the farm, so they are never location-checked.
+  const OFFSITE_DEPTS = ["markets", "deliver"];
+  const getLocationStatus = (opts) => new Promise((resolve) => {
+    if (!farmLoc) { resolve({ status: "off" }); return; }
+    if (!navigator.geolocation) { resolve({ status: "unknown" }); return; }
     navigator.geolocation.getCurrentPosition(
       (p) => {
         const d = haversine(p.coords.latitude, p.coords.longitude, farmLoc.lat, farmLoc.lng);
-        if (d <= 200) resolve(true);
-        else { showToast("You're " + Math.round(d) + "m from the farm – too far to clock in/out", "err"); resolve(false); }
+        resolve({ status: d <= 200 ? "ok" : "away", dist: Math.round(d) });
       },
-      (e) => { showToast(e.message || "Couldn't get your location", "err"); resolve(false); },
-      { enableHighAccuracy: true, timeout: 10000 }
+      () => resolve({ status: "unknown" }),
+      opts
     );
   });
 
   // ── clock actions ─────────────────────────────────────────────────────────
-  const doClockIn = (deptId) => runOnce(async () => {
+  const doClockIn = (deptId) => runOnce("doClockIn", async () => {
     setShowDepts(false);
     if (!profile) return;
     if (myActive) { showToast("You already have an active shift", "err"); finishNfc(); return; }
-    if (!(await checkGPS())) return;
+    if (farmLoc && OFFSITE_DEPTS.indexOf(deptId) === -1) {
+      const loc = await getLocationStatus({ enableHighAccuracy: true, timeout: 12000 });
+      if (loc.status === "away") { showToast("You're " + loc.dist + "m from the farm – too far to clock in to " + deptLabel(deptId) + ".", "err"); return; }
+      if (loc.status === "unknown") { showToast("Couldn't get your location. Allow location for this site in your phone settings, then try again.", "err"); return; }
+    }
     const entry = {
       id: "e_" + Date.now() + "_" + profile.id.slice(0, 4),
       staffId: profile.id, staffName: profile.name, department: deptId,
@@ -780,32 +835,50 @@ export default function App() {
     finishNfc();
   });
 
-  const startClockOut = () => runOnce(async () => {
-    if (!myActive) return;
-    if (!(await checkGPS())) return;
+  // One tap. The clock-out is saved before anything else happens, so it can never be
+  // lost by closing the app on the "forgot a break?" step that follows.
+  const doClockOut = () => runOnce("doClockOut", async () => {
+    if (!myActive) { finishNfc(); return; }
+    const entry = myActive;
+    const outISO = new Date().toISOString();
+    const breaks = (entry.breaks || []).map((b) => (b.end ? b : Object.assign({}, b, { end: outISO })));
+    const updated = Object.assign({}, entry, { breaks: breaks, clockOut: outISO });
+    saveEntry(updated);
+    showToast("Clocked out – " + fmtH(entryStats(updated).worked) + " worked");
+    setRetroEntry(updated);
     setRetroRows([]);
     setShowRetro(true);
-  });
-
-  const finaliseClockOut = () => runOnce(async () => {
-    if (!myActive) { setShowRetro(false); finishNfc(); return; }
-    const outISO = new Date().toISOString();
-    const existing = (myActive.breaks || []).map((b) => (b.end ? b : Object.assign({}, b, { end: outISO })));
-    const extra = placeBreaks(retroRows, myActive.clockIn, outISO);
-    const updated = Object.assign({}, myActive, { breaks: existing.concat(extra), clockOut: outISO });
-    if (await saveEntry(updated)) showToast("Clocked out – " + fmtH(entryStats(updated).worked) + " worked");
-    setShowRetro(false);
-    setRetroRows([]);
     finishNfc();
+    // Location is only recorded, never used to block a clock-out. If they were away from
+    // the farm (or location was unavailable) Hannah sees a small tag on the shift.
+    if (farmLoc && OFFSITE_DEPTS.indexOf(entry.department) === -1) {
+      const loc = await getLocationStatus({ enableHighAccuracy: false, timeout: 6000, maximumAge: 300000 });
+      if (loc.status === "away" || loc.status === "unknown") {
+        setDoc(doc(db, "entries", updated.id), { outCheck: loc.status }, { merge: true }).catch(() => {});
+      }
+    }
   });
 
-  const doBreakStart = (type) => runOnce(async () => {
+  const closeRetro = () => { setShowRetro(false); setRetroRows([]); setRetroEntry(null); };
+  const saveMissedBreaks = () => runOnce("saveMissedBreaks", async () => {
+    const e = retroEntry ? (entries.find((x) => x.id === retroEntry.id && x.clockOut) || retroEntry) : null;
+    const mins = retroRows.reduce((t, r) => t + (Number(r.minutes) > 0 ? Number(r.minutes) : 0), 0);
+    if (!e || mins <= 0) { closeRetro(); return; }
+    const already = calcBreakSummary(e.breaks).reduce((t, b) => t + b.ms, 0);
+    if (already + mins * 60000 >= new Date(e.clockOut) - new Date(e.clockIn)) { showToast("Those breaks add up to more than your whole shift", "err"); return; }
+    const updated = Object.assign({}, e, { breaks: (e.breaks || []).concat(placeBreaks(retroRows, e.clockIn, e.clockOut)) });
+    saveEntry(updated);
+    showToast("Break added – " + fmtH(entryStats(updated).worked) + " worked");
+    closeRetro();
+  });
+
+  const doBreakStart = (type) => runOnce("doBreakStart", async () => {
     if (!myActive || myOpenBreak) return;
     const breaks = (myActive.breaks || []).concat([{ type: type, start: new Date().toISOString(), end: null }]);
     if (await saveEntry(Object.assign({}, myActive, { breaks: breaks }))) showToast(type === "meal" ? "Meal break started" : "Rest break started");
   });
 
-  const doBreakEnd = () => runOnce(async () => {
+  const doBreakEnd = () => runOnce("doBreakEnd", async () => {
     if (!myActive || !myOpenBreak) return;
     const outISO = new Date().toISOString();
     const breaks = (myActive.breaks || []).map((b) => (b === myOpenBreak ? Object.assign({}, b, { end: outISO }) : b));
@@ -820,7 +893,7 @@ export default function App() {
     setEeNote(e.note || "");
     setEeDept(e.department || "");
   };
-  const doSaveEdit = () => runOnce(async () => {
+  const doSaveEdit = () => runOnce("doSaveEdit", async () => {
     const nowMs = Date.now();
     const inISO = sydInputToISO(eeIn);
     const outISO = eeOut ? sydInputToISO(eeOut) : null;
@@ -843,7 +916,7 @@ export default function App() {
     setBreakEdit({ entry: e, rows: rows });
   };
   const updateBreakRow = (i, field, val) => setBreakEdit((prev) => ({ entry: prev.entry, rows: prev.rows.map((r, idx) => (idx === i ? Object.assign({}, r, { [field]: val }) : r)) }));
-  const doSaveBreaks = () => runOnce(async () => {
+  const doSaveBreaks = () => runOnce("doSaveBreaks", async () => {
     const e = breakEdit.entry;
     const placed = placeBreaks(breakEdit.rows, e.clockIn, e.clockOut);
     const nowMs = Date.now();
@@ -857,7 +930,7 @@ export default function App() {
     setAeStaff(""); setAeDept(""); setAeIn(y + "T07:00"); setAeOut(y + "T15:00"); setAeRows([]); setAeNote("");
     setShowAddEntry(true);
   };
-  const doAddEntry = () => runOnce(async () => {
+  const doAddEntry = () => runOnce("doAddEntry", async () => {
     const person = everyone.find((x) => x.id === aeStaff);
     if (!person) { showToast("Choose a team member", "err"); return; }
     if (!aeDept) { showToast("Choose a department", "err"); return; }
@@ -883,7 +956,7 @@ export default function App() {
     if (await saveEntry(entry)) { setShowAddEntry(false); showToast("Shift added – " + fmtH(entryStats(entry).worked)); }
   });
 
-  const doDeleteEntry = (id) => runOnce(async () => {
+  const doDeleteEntry = (id) => runOnce("doDeleteEntry", async () => {
     try { await deleteDoc(doc(db, "entries", id)); showToast("Entry deleted"); }
     catch (err) { console.error(err); showToast("Couldn't delete that entry", "err"); }
     setDeleteConfirm(null);
@@ -1001,8 +1074,7 @@ export default function App() {
       id: "l_" + Date.now(), staffId: profile.id, staffName: profile.name,
       from: flFrom, to: flTo, type: flType, note: flNote, status: "pending", submitted: new Date().toISOString()
     };
-    try { await setDoc(doc(db, "leaves", req.id), clean(req)); }
-    catch (e) { showToast("Couldn't submit your request", "err"); return; }
+    setDoc(doc(db, "leaves", req.id), clean(req)).catch(() => showToast("The server refused that request – please tell Hannah.", "err"));
     setShowLeaveForm(false); setFlFrom(""); setFlTo(""); setFlNote(""); setFlType("annual");
     showToast("Leave request sent to Hannah");
     mailto(MANAGER, "Leave request – " + profile.name,
@@ -1127,14 +1199,17 @@ export default function App() {
   const NAV_BOTTOM = isAdmin ? NAV_FLAT.filter((n) => BOTTOM_ADMIN.indexOf(n.id) !== -1) : NAV_FLAT;
   const NAV_MORE = isAdmin ? NAV_FLAT.filter((n) => BOTTOM_ADMIN.indexOf(n.id) === -1) : [];
 
+  const DEC_NOTE = !isAdmin ? null : <p className="small muted mb12">Hours are decimals: 0.25 h = 15 min · 0.50 h = 30 min · 0.75 h = 45 min.</p>;
   const groupByWeek = (list) => {
     const map = {};
     list.forEach((e) => {
       const mk = mondayKey(sydKey(e.clockIn));
-      if (!map[mk]) map[mk] = { key: mk, entries: [], worked: 0, breakMs: 0, unpaidMs: 0 };
+      if (!map[mk]) map[mk] = { key: mk, entries: [], worked: 0, breakMs: 0, unpaidMs: 0, weekday: 0, sat: 0, sun: 0 };
       const st = entryStats(e);
       map[mk].entries.push(e);
       map[mk].worked += st.worked; map[mk].breakMs += st.breakMs; map[mk].unpaidMs += st.unpaidMs;
+      const dow = dowOfKey(sydKey(e.clockIn));
+      if (dow === 6) map[mk].sat += st.worked; else if (dow === 0) map[mk].sun += st.worked; else map[mk].weekday += st.worked;
     });
     return Object.values(map).sort((a, b) => b.key.localeCompare(a.key));
   };
@@ -1153,7 +1228,11 @@ export default function App() {
                 <td className="mono rowtitle">{fmtDateShort(e.clockIn)}</td>
                 <td className="muted" data-label="Dept">{deptLabel(e.department)}</td>
                 <td className="mono" data-label="In">{fmtTime(e.clockIn)}</td>
-                <td className="mono" data-label="Out">{e.clockOut ? fmtTime(e.clockOut) : <span className="badge b-green">Active</span>}</td>
+                <td className="mono" data-label="Out"><span>
+                  {e.clockOut ? fmtTime(e.clockOut) : <span className="badge b-green">Active</span>}
+                  {e.outCheck === "away" ? <span className="badge b-amber" style={{ marginLeft: 6 }} title="Clocked out away from the farm">Away</span> : null}
+                  {e.outCheck === "unknown" ? <span className="badge b-gray" style={{ marginLeft: 6 }} title="No location when clocking out">No GPS</span> : null}
+                </span></td>
                 <td className="mono muted" data-label="Breaks"><span>
                   {st.breakMs > 0 ? fmtMin(st.breakMs) : "—"}
                   {st.unpaidMs > 0 ? <span className="small"> · {fmtMin(st.unpaidMs)} unpaid</span> : null}
@@ -1191,9 +1270,12 @@ export default function App() {
               <ChevronRight size={16} style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
               <div className="card-t">Week of {weekLabel(w.key)}</div>
             </div>
-            <div className="row gap8 wrap">
-              <span className="badge b-gray">Breaks {fmtH(w.breakMs)}</span>
-              <span className="badge b-green">{fmtH(w.worked)} worked</span>
+            <span className="badge b-green">{fmtH(w.worked)} worked</span>
+            <div className="wk-split">
+              <div className="pill">Mon–Fri <b>{fmtH(w.weekday)}</b></div>
+              <div className="pill">Saturday <b>{fmtH(w.sat)}</b></div>
+              <div className="pill">Sunday <b>{fmtH(w.sun)}</b></div>
+              <div className="pill">Breaks <b>{fmtH(w.breakMs)}</b></div>
             </div>
           </div>
           {isOpen ? renderEntryTable(w.entries, canDelete) : null}
@@ -1358,13 +1440,13 @@ export default function App() {
                     <>
                       <button className="btn btn-amber btn-lg" onClick={() => doBreakStart("rest")}><Coffee size={18} /> Start rest break</button>
                       <button className="btn btn-amber btn-lg" onClick={() => doBreakStart("meal")}><Utensils size={18} /> Start meal break</button>
-                      <button className="btn btn-d btn-lg" onClick={startClockOut}><LogOut size={18} /> Clock out</button>
+                      <button className="btn btn-d btn-lg" onClick={doClockOut}><LogOut size={18} /> Clock out</button>
                     </>
                   ) : null}
                   {myActive && myOpenBreak ? (
                     <>
                       <button className="btn btn-blue btn-lg" onClick={doBreakEnd}><Coffee size={18} /> End break</button>
-                      <button className="btn btn-o btn-lg" onClick={startClockOut}><LogOut size={18} /> Clock out</button>
+                      <button className="btn btn-o btn-lg" onClick={doClockOut}><LogOut size={18} /> Clock out</button>
                     </>
                   ) : null}
                 </div>
@@ -1399,6 +1481,7 @@ export default function App() {
       return (
         <div className="page">
           <p className="muted mb16" style={{ fontSize: 13 }}>Tap a week to open it. You can fix a shift's times or breaks if you forgot something, but not for the future.</p>
+          {DEC_NOTE}
           {mine.length === 0 ? <div className="card"><div className="card-b muted" style={{ textAlign: "center", fontStyle: "italic" }}>No shifts yet.</div></div> : renderWeekBlocks(mine, false, "me-")}
         </div>
       );
@@ -1421,6 +1504,7 @@ export default function App() {
           <div className="fb-spacer" style={{ flex: 1 }} />
           <button className="btn btn-p" onClick={openAddEntry}><Plus size={14} /> Add shift</button>
         </div>
+        {DEC_NOTE}
         {plist.length === 0 ? <div className="card"><div className="card-b muted" style={{ textAlign: "center", fontStyle: "italic" }}>No entries yet.</div></div> : null}
         {plist.map((P) => (
           <div key={P.id} style={{ marginBottom: 26 }}>
@@ -1443,6 +1527,7 @@ export default function App() {
       const lastWk = weeks.find((w) => w.key === addDaysKey(mondayKey(todayKey), -7));
       return (
         <div className="page" style={{ maxWidth: 720 }}>
+          {DEC_NOTE}
           <div className="kpi-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
             <div className="kpi red"><div className="kpi-val">{fmtH(thisWk ? thisWk.worked : 0)}</div><div className="kpi-lbl">This week</div></div>
             <div className="kpi"><div className="kpi-val">{fmtH(lastWk ? lastWk.worked : 0)}</div><div className="kpi-lbl">Last week</div></div>
@@ -1452,14 +1537,16 @@ export default function App() {
             {weeks.length === 0
               ? <div className="card-b muted" style={{ fontStyle: "italic" }}>Your weekly totals will appear here after your first shift.</div>
               : <div className="tbl-wrap"><table className="stack">
-                <thead><tr><th>Week</th><th>Shifts</th><th>Breaks</th><th>Worked</th></tr></thead>
+                <thead><tr><th>Week</th><th>Mon–Fri</th><th>Saturday</th><th>Sunday</th><th>Breaks</th><th>Total</th></tr></thead>
                 <tbody>
                   {weeks.map((w) => (
                     <tr key={w.key}>
                       <td className="strong rowtitle">{weekLabel(w.key)}</td>
-                      <td className="mono" data-label="Shifts">{w.entries.length}</td>
+                      <td className="mono" data-label="Mon–Fri">{fmtH(w.weekday)}</td>
+                      <td className="mono" data-label="Saturday">{fmtH(w.sat)}</td>
+                      <td className="mono" data-label="Sunday">{fmtH(w.sun)}</td>
                       <td className="mono muted" data-label="Breaks">{fmtH(w.breakMs)}</td>
-                      <td className="mono strong" data-label="Worked">{fmtH(w.worked)}</td>
+                      <td className="mono strong" data-label="Total">{fmtH(w.worked)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1495,6 +1582,7 @@ export default function App() {
           <button className="btn btn-p" onClick={() => exportWeekCSV(rep)}><Download size={14} /> Export week</button>
         </div>
 
+        {DEC_NOTE}
         <div className="kpi-grid">
           <div className="kpi red"><div className="kpi-val">{fmtHrs(totWorked)}<small>h</small></div><div className="kpi-lbl">Total worked</div></div>
           <div className="kpi"><div className="kpi-val">{fmtH(totBreak)}</div><div className="kpi-lbl">Total break time</div></div>
@@ -1805,6 +1893,8 @@ export default function App() {
           <div className="tb-c">{now.toLocaleTimeString("en-AU", { timeZone: SYD, hour: "numeric", minute: "2-digit", second: "2-digit" })} {tzLabel(now)}<span className="hide-sm"> · Sydney</span></div>
         </div>
 
+        {!online ? <div className="sync-banner">You're offline. Your changes are saved on this phone and will send automatically once you have signal. If you closed the app, open it again when you're back in range.</div> : (slowSync ? <div className="sync-banner">Still sending your changes… keep the app open for a moment.</div> : null)}
+
         {view === "live" && isAdmin ? renderLive() : null}
         {view === "clock" && !isAdmin ? renderClock() : null}
         {view === "timesheets" ? renderTimesheets() : null}
@@ -1832,7 +1922,7 @@ export default function App() {
             )}
             <div className="modal-f">
               <button className="btn btn-o" onClick={finishNfc}>Cancel</button>
-              {myActive ? <button className="btn btn-d" onClick={startClockOut}><LogOut size={14} /> Clock out</button> : null}
+              {myActive ? <button className="btn btn-d" onClick={doClockOut}><LogOut size={14} /> Clock out</button> : null}
               {!myActive && nfcDept ? <button className="btn btn-p" onClick={() => doClockIn(nfcDept.id)}><LogIn size={14} /> Clock in</button> : null}
             </div>
           </div>
@@ -1849,30 +1939,49 @@ export default function App() {
         </div>
       ) : null}
 
-      {/* Clock-out: log forgotten breaks */}
-      {showRetro ? (
-        <div className="overlay">
-          <div className="modal">
-            <div className="modal-h"><div><div className="modal-t">Any breaks you forgot to log?</div><div className="small muted" style={{ marginTop: 3 }}>Just type how many minutes — no need for exact times.</div></div></div>
-            <div className="modal-b">
-              {retroRows.map((r, i) => (
-                <div key={i} className="row gap8 mb12">
-                  <select className="finp" style={{ flex: "0 0 110px" }} value={r.type} onChange={(e) => setRetroRows((p) => p.map((x, idx) => idx === i ? Object.assign({}, x, { type: e.target.value }) : x))}>
-                    <option value="rest">Rest</option><option value="meal">Meal</option>
-                  </select>
-                  <input className="finp" type="number" inputMode="numeric" min="1" max="480" placeholder="Minutes, e.g. 45" value={r.minutes} onChange={(e) => setRetroRows((p) => p.map((x, idx) => idx === i ? Object.assign({}, x, { minutes: e.target.value }) : x))} />
-                  <button className="btn btn-g btn-sm" onClick={() => setRetroRows((p) => p.filter((_, idx) => idx !== i))}><X size={14} /></button>
-                </div>
-              ))}
-              <button className="btn btn-o btn-sm" onClick={() => setRetroRows((p) => p.concat([{ type: "meal", minutes: "" }]))}><Plus size={13} /> Add a break</button>
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-g" onClick={() => { setShowRetro(false); finishNfc(); }}>Cancel</button>
-              <button className="btn btn-d" onClick={finaliseClockOut}><LogOut size={14} /> {retroRows.some((r) => Number(r.minutes) > 0) ? "Save & clock out" : "Clock out"}</button>
+      {/* After clock-out: optional "forgot a break?" */}
+      {showRetro ? (() => {
+        const re = retroEntry ? (entries.find((x) => x.id === retroEntry.id && x.clockOut) || retroEntry) : null;
+        const logged = re ? calcBreakSummary(re.breaks) : [];
+        return (
+          <div className="overlay">
+            <div className="modal">
+              <div className="modal-h"><div>
+                <div className="modal-t">You're clocked out ✓</div>
+                <div className="small muted" style={{ marginTop: 3 }}>{re ? fmtH(entryStats(re).worked) + " worked today" : "Saved"}</div>
+              </div></div>
+              <div className="modal-b">
+                <div className="strong mb12">Breaks already logged</div>
+                {logged.length === 0
+                  ? <p className="muted small mb12" style={{ fontStyle: "italic" }}>None</p>
+                  : <ul className="break-list mb12" style={{ border: "1px solid var(--line)", borderRadius: "var(--rs)" }}>{logged.map((b, i) => <li key={i}><span>{b.type === "meal" ? "Meal break" : "Rest break"}</span><span className="mono muted">{Math.round(b.ms / 60000)} min</span></li>)}</ul>}
+                <div className="strong" style={{ marginTop: 16 }}>Forgot to log a break?</div>
+                <p className="small muted mb12" style={{ marginTop: 3 }}>Only add breaks that are not in the list above.</p>
+                {retroRows.map((r, i) => {
+                  const dup = logged.some((b) => b.type === r.type && Number(r.minutes) > 0 && Math.abs(Math.round(b.ms / 60000) - Number(r.minutes)) <= 1);
+                  return (
+                    <div key={i} className="mb12">
+                      <div className="row gap8">
+                        <select className="finp" style={{ flex: "0 0 110px" }} value={r.type} onChange={(e) => setRetroRows((p) => p.map((x, idx) => idx === i ? Object.assign({}, x, { type: e.target.value }) : x))}>
+                          <option value="meal">Meal</option><option value="rest">Rest</option>
+                        </select>
+                        <input className="finp" type="number" inputMode="numeric" min="1" max="480" placeholder="Minutes, e.g. 30" value={r.minutes} onChange={(e) => setRetroRows((p) => p.map((x, idx) => idx === i ? Object.assign({}, x, { minutes: e.target.value }) : x))} />
+                        <button className="btn btn-g btn-sm" onClick={() => setRetroRows((p) => p.filter((_, idx) => idx !== i))}><X size={14} /></button>
+                      </div>
+                      {dup ? <div className="small" style={{ color: "var(--amber)", marginTop: 5 }}>You already have a {Math.round(Number(r.minutes))} min {r.type === "meal" ? "meal" : "rest"} break logged – adding this would count it twice.</div> : null}
+                    </div>
+                  );
+                })}
+                <button className="btn btn-o btn-sm" onClick={() => setRetroRows((p) => p.concat([{ type: "meal", minutes: "" }]))}><Plus size={13} /> Add a break</button>
+              </div>
+              <div className="modal-f">
+                <button className="btn btn-o" onClick={closeRetro}>{retroRows.some((r) => Number(r.minutes) > 0) ? "Skip" : "Done"}</button>
+                {retroRows.some((r) => Number(r.minutes) > 0) ? <button className="btn btn-p" onClick={saveMissedBreaks}><Check size={14} /> Save breaks</button> : null}
+              </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        );
+      })() : null}
 
       {/* Edit entry times */}
       {editingEntry ? (
