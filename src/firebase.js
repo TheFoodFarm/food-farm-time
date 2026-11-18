@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
@@ -12,7 +12,21 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// Keep a copy of the data on the phone. Clock-ins, clock-outs and breaks made with no
+// signal are stored there and sent automatically when the signal returns, even if the
+// app was closed in the meantime. (Without this, a change made with no signal is lost
+// if the page is closed before it reaches the server.)
+let firestore;
+try {
+  firestore = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  });
+} catch (e) {
+  // Already started (e.g. during a hot reload) or not supported: use the normal setup.
+  firestore = getFirestore(app);
+}
+export const db = firestore;
 export const auth = getAuth(app);
 
 // A second, separate Firebase app instance. It is only used by the admin to
